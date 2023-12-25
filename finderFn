@@ -1,0 +1,129 @@
+import os
+import hashlib
+import pandas as pd
+
+
+def create_table(folder: str, ext: str = None, pre: bool = False) -> pd.DataFrame:
+    """Create a Pandas dataframe with a column 'file' for the path to a file and a
+    column 'hash' with the corresponding hash identifier."""
+    folder = format_path(folder)
+    input_files = filelist(folder, ext=ext)
+
+    summary_df = pd.DataFrame(columns=['fn', 'folder', 'file', 'path'])
+
+    summary_df['fn'] = filenames(input_files)
+    summary_df['folder'] = lastfolder(input_files)
+    summary_df['file'] = input_files
+    summary_df['path'] = ffolder(input_files)
+
+
+    return summary_df
+
+
+def format_path(file: str) -> str:
+    """Format a path according to the systems separator."""
+    return os.path.abspath([file.replace('/', os.path.sep)][0])
+
+
+def filelist(filepath: str, ext: str = None) -> list:
+    """ Lists all files in a folder including sub-folders.
+    If only files with a specific extension are of interest
+    this can be specified by the 'ext' parameter."""
+    file_list = []
+    for path, _, files in os.walk(filepath):
+        for name in files:
+            _, extension = os.path.splitext(name)
+            if ext is None or extension == ext:
+                file_list.append(os.path.join(path, name))
+
+    return file_list
+
+
+def save_csv(csv_path: str, duplicates: pd.DataFrame, file: str = 'dups' ) -> None:
+    """Save a Pandas dataframe as a csv file."""
+    csv_file = os.path.join(csv_path, file)
+    duplicates.to_csv(csv_file, index=False)
+
+
+def filenames(files: list) -> list:
+    justnames = []
+    for file in files:
+        fn = os.path.split(file)[1]
+        justnames.append(fn)
+    return justnames
+
+def lastfolder(files: list) -> list:
+    lastdir = []
+    for file in files:
+        fn = os.path.split(os.path.split(file)[0])[1]
+        lastdir.append(fn)
+    return lastdir
+
+def ffolder(files: list) -> list:
+    lastdir = []
+    for file in files:
+        fn = os.path.dirname(file)
+        lastdir.append(fn)
+    return lastdir
+ 
+
+def compare_folders(reference_folder: str, compare_folder: str,
+                    to_csv: bool = False, csv_path: str = './', ext: str = None) -> pd.DataFrame:
+    """Directly compare two folders of interest and identify duplicates between them.
+    With the 'to_csv' parameter the results can also be saved in a .csv file.
+    The location of that .csv file can be specified by the 'csv_path' parameter.
+    Further the search can be limited to files with a specific extension via the 'ext' parameter."""
+    df_reference = create_table(reference_folder, ext)
+    df_compare = create_table(compare_folder, ext)
+
+    ind_duplicates = [x == df_reference['fn'] for x in df_compare['fn']]
+    duplicate_files = df_compare.iloc[ind_duplicates]
+
+    duplicate_files.sort_values(by=['fn', 'folder'] , axis='index', inplace=True)
+
+    if to_csv is True:
+        save_csv(csv_path, duplicate_files)
+
+    return duplicate_files
+
+
+def list_all_duplicates(folder: str,
+                        to_csv: bool = True,
+                        csv_path: str = './',
+                        ext: str = None,
+                        fastscan: bool = True) -> pd.DataFrame:
+    """Go through a folder and find all duplicate files.
+    The returned dataframe contains all files, not only the duplicates.
+    With the 'to_csv' parameter the results can also be saved in a .csv file.
+    The location of that .csv file can be specified by the 'csv_path' parameter.
+    To improve performance when handling large files the fastscan parameter
+    can be set to True. In this case files are pre-selected based on their size."""
+    duplicate_files = create_table(folder, ext)
+    duplicate_files = duplicate_files[duplicate_files['fn'].duplicated(keep=False)]
+    duplicate_files.sort_values(by='fn', inplace=True)
+
+    if to_csv is True:
+        print('saving file')
+        save_csv(csv_path, duplicate_files, 'files')
+
+    return duplicate_files
+
+
+
+def folders() -> None:
+    folder_of_interest_1 = 'H:/abc'
+    folder_of_interest_2 = 'F:/abc'
+    df_l = compare_folders(folder_of_interest_1, folder_of_interest_2, ext='.mp4', to_csv=False)
+    df_r = compare_folders(folder_of_interest_2, folder_of_interest_1   , ext='.mp4', to_csv=False)
+
+    save_csv('./', df_l, file='left')
+    save_csv('./', df_r, file='right')
+    
+       df_l.merge(df_r, sort=True, on='fn')
+    result = pd.concat([df_l, df_r])
+    result.sort_values(by='fn', axis='index', inplace=True)
+    save_csv('./', result, file='merge')
+
+if __name__ == '__main__':
+    #list_all_duplicates(folder='D:/myFolder', ext='.mkv', to_csv=True) 
+    list_all_duplicates(folder='G:/myFolder', to_csv=True) 
